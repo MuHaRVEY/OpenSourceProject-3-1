@@ -12,7 +12,6 @@ import sourcedefender
 import otp
 
 
-
 try:
   from gi.repository import GObject  # python3
 except ImportError:
@@ -187,7 +186,7 @@ class timeset(dbus.service.Object):
         self.setup_timeout(1*1000)
         self.listen_for_signal(bus)
         self.pm01 = None
-        self.pm25= None
+        self.pm25 = None
         self.pm10 = None
         self.fd = fd
         
@@ -230,12 +229,19 @@ def main():
     
     mainloop = GObject.MainLoop()
     
-    
     fd = os.open("/dev/i2c-1", os.O_RDWR)
-    
+    I2C_SLAVE = 0x703
+    PM2008 = 0x28
+    io = fcntl.ioctl(fd, I2C_SLAVE, PM2008)
     
     while True:
         t = timeset(mainloop, system_on, fd)
+    
+        dust_data = os.read(t.fd, 32)
+        t.pm01 = 256*int(dust_data[7])+int(dust_data[8])
+        t.pm25 = 256*int(dust_data[9])+int(dust_data[10])
+        t.pm10 = 256*int(dust_data[11])+int(dust_data[12])
+        
         key = otp.generate()
         key_list = [int(key/100)%10, int(key/10)%10, int(key)%10]
         now =time.time()
@@ -243,8 +249,9 @@ def main():
         
         system_on = True
         test_advertisement = TestAdvertisement(bus, 0, time_list, key_list)
-
-        ad_manager.RegisterAdvertisement(test_advertisement.get_path(), {}, #중괄호에 코드를 추가해야 함.
+        
+        test_advertisement.add_data(0xfd, [t.pm01, t.pm25, t.pm10])
+        ad_manager.RegisterAdvertisement(test_advertisement.get_path(), {},
                                              reply_handler=register_ad_cb,
                                              error_handler=register_ad_error_cb)
 
@@ -254,10 +261,11 @@ def main():
         
         
         ad_manager.UnregisterAdvertisement(test_advertisement)
+        print("unregister")
         dbus.service.Object.remove_from_connection(test_advertisement)
-        
+        print("remove_connection")
         
 if __name__ == '__main__':
     main()
-
-
+    
+    
