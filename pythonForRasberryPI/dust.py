@@ -1,4 +1,3 @@
-
 from __future__ import print_function
 import os
 import fcntl
@@ -7,16 +6,15 @@ import dbus
 import dbus.exceptions
 import dbus.mainloop.glib
 import dbus.service
-import time
 import array
 import sourcedefender
 import otp
-
+import pymysql
 
 try:
-  from gi.repository import GObject  # python3
+    from gi.repository import GObject  # python3
 except ImportError:
-  import gobject as GObject  # python2
+    import gobject as GObject  # python2
 
 from random import randint
 
@@ -71,25 +69,19 @@ class Advertisement(dbus.service.Object):
         properties = dict()
         properties['Type'] = self.ad_type
         if self.service_uuids is not None:
-            properties['ServiceUUIDs'] = dbus.Array(self.service_uuids,
-                                                    signature='s')
+            properties['ServiceUUIDs'] = dbus.Array(self.service_uuids, signature='s')
         if self.solicit_uuids is not None:
-            properties['SolicitUUIDs'] = dbus.Array(self.solicit_uuids,
-                                                    signature='s')
+            properties['SolicitUUIDs'] = dbus.Array(self.solicit_uuids, signature='s')
         if self.manufacturer_data is not None:
-            properties['ManufacturerData'] = dbus.Dictionary(
-                self.manufacturer_data, signature='qv')
+            properties['ManufacturerData'] = dbus.Dictionary(self.manufacturer_data, signature='qv')
         if self.service_data is not None:
-            properties['ServiceData'] = dbus.Dictionary(self.service_data,
-                                                        signature='sv')
+            properties['ServiceData'] = dbus.Dictionary(self.service_data, signature='sv')
         if self.local_name is not None:
             properties['LocalName'] = dbus.String(self.local_name)
         if self.include_tx_power is not None:
             properties['IncludeTxPower'] = dbus.Boolean(self.include_tx_power)
-
         if self.data is not None:
-            properties['Data'] = dbus.Dictionary(
-                self.data, signature='yv')
+            properties['Data'] = dbus.Dictionary(self.data, signature='yv')
         return {LE_ADVERTISEMENT_IFACE: properties}
 
     def get_path(self):
@@ -125,9 +117,7 @@ class Advertisement(dbus.service.Object):
             self.data = dbus.Dictionary({}, signature='yv')
         self.data[ad_type] = dbus.Array(data, signature='y')
 
-    @dbus.service.method(DBUS_PROP_IFACE,
-                         in_signature='s',
-                         out_signature='a{sv}')
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
     def GetAll(self, interface):
         print('GetAll')
         if interface != LE_ADVERTISEMENT_IFACE:
@@ -135,11 +125,10 @@ class Advertisement(dbus.service.Object):
         print('returning props')
         return self.get_properties()[LE_ADVERTISEMENT_IFACE]
 
-    @dbus.service.method(LE_ADVERTISEMENT_IFACE,
-                         in_signature='',
-                         out_signature='')
+    @dbus.service.method(LE_ADVERTISEMENT_IFACE, in_signature='', out_signature='')
     def Release(self):
         print('%s: Released!' % self.path)
+
 
 class TestAdvertisement(Advertisement):
 
@@ -151,7 +140,6 @@ class TestAdvertisement(Advertisement):
         self.add_local_name('dustsensor')
         self.include_tx_power = True
         self.add_data(0xfd, [0x00])
-    
 
 
 def register_ad_cb():
@@ -164,8 +152,7 @@ def register_ad_error_cb(error):
 
 
 def find_adapter(bus):
-    remote_om = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, '/'),
-                               DBUS_OM_IFACE)
+    remote_om = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, '/'), DBUS_OM_IFACE)
     objects = remote_om.GetManagedObjects()
 
     for o, props in objects.items():
@@ -174,38 +161,38 @@ def find_adapter(bus):
 
     return None
 
+
 class timeset(dbus.service.Object):
     def __init__(self, loop, system_on, fd):
         self.loop = loop
         bus = dbus.SessionBus()
         bus.request_name(BUS_NAME)
-        bus_name = dbus.service.BusName(BUS_NAME, bus = bus)
+        bus_name = dbus.service.BusName(BUS_NAME, bus=bus)
         if system_on is False:
-            dbus.service.Object.__init__(self,bus_name, OPATH)
+            dbus.service.Object.__init__(self, bus_name, OPATH)
             system_on = True
-        
-        self.setup_timeout(1*1000)
+
+        self.setup_timeout(1 * 1000)
         self.listen_for_signal(bus)
         self.pm01 = None
         self.pm25 = None
         self.pm10 = None
         self.fd = fd
-        
-        
+
     def setup_timeout(self, timeout):
         id = GObject.timeout_add(timeout, self.handler)
-        
+
     def setloop(self, loop):
         self.loop = loop
-        
-    def listen_for_signal(self,bus):
+
+    def listen_for_signal(self, bus):
         bus.add_signal_receiver(self.handler, "Stop")
-        
+
     def handler(self):
         print("timeout")
         self.loop.quit()
-        
-        
+
+
 def main():
     system_on = False
     global mainloop
@@ -220,51 +207,58 @@ def main():
         return
 
     adapter_props = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
-                                   "org.freedesktop.DBus.Properties");
+                                   "org.freedesktop.DBus.Properties")
 
     adapter_props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(1))
 
     ad_manager = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
                                 LE_ADVERTISING_MANAGER_IFACE)
-    
-    
+
     mainloop = GObject.MainLoop()
-    
+
     fd = os.open("/dev/i2c-1", os.O_RDWR)
     I2C_SLAVE = 0x703
     PM2008 = 0x28
     io = fcntl.ioctl(fd, I2C_SLAVE, PM2008)
-    
+
+    # MariaDB 연결 설정
+    conn = pymysql.connect(host='127.0.0.1', user='root', db='jo3_sensor2', password='0000', charset='utf8')
+    print('Database connected!')
+
     while True:
         t = timeset(mainloop, system_on, fd)
-    
+
         dust_data = os.read(t.fd, 32)
-        t.pm01 = 256*int(dust_data[7])+int(dust_data[8])
-        t.pm25 = 256*int(dust_data[9])+int(dust_data[10])
-        t.pm10 = 256*int(dust_data[11])+int(dust_data[12])
-        
+        t.pm01 = 256 * int(dust_data[7]) + int(dust_data[8])
+        t.pm25 = 256 * int(dust_data[9]) + int(dust_data[10])
+        t.pm10 = 256 * int(dust_data[11]) + int(dust_data[12])
+
         key = otp.generate()
-        key_list = [int(key/100)%10, int(key/10)%10, int(key)%10]
-        now =time.time()
-        time_list = [int(now/100000000)%100, int(now/1000000)%100, int(now/10000)%100, int(now/100)%100, int(now/1)%100]
-        
+        key_list = [int(key / 100) % 10, int(key / 10) % 10, int(key) % 10]
+        now = time.time()
+        time_list = [int(now / 100000000) % 100, int(now / 1000000) % 100, int(now / 10000) % 100, int(now / 100) % 100, int(now) % 100]
+
+        # 데이터베이스에 데이터 삽입
+        sql = "INSERT INTO dustsensor (time, pm01, pm15, pm10, otp) VALUES (%s, %s, %s, %s, %s)"
+        cur = conn.cursor()
+        cur.execute(sql, (int(now), t.pm01, t.pm25, t.pm10, key))
+        conn.commit()
+        print('Data inserted into database!')
+
         system_on = True
         test_advertisement = TestAdvertisement(bus, 0, time_list, key_list)
-        
+
         test_advertisement.add_data(0xfd, [t.pm01, t.pm25, t.pm10])
         ad_manager.RegisterAdvertisement(test_advertisement.get_path(), {},
-                                             reply_handler=register_ad_cb,
-                                             error_handler=register_ad_error_cb)
+                                         reply_handler=register_ad_cb,
+                                         error_handler=register_ad_error_cb)
 
-        
-        
         mainloop.run()
-        
-        
+
         ad_manager.UnregisterAdvertisement(test_advertisement)
         print("Unregister")
         dbus.service.Object.remove_from_connection(test_advertisement)
         print("Remove Connection")
-        
+
 if __name__ == '__main__':
     main()
