@@ -1,3 +1,4 @@
+
 from __future__ import print_function
 import os
 import fcntl
@@ -261,11 +262,9 @@ def main():
         
         
         ad_manager.UnregisterAdvertisement(test_advertisement)
-        print("unregister")
+        print("Unregister")
         dbus.service.Object.remove_from_connection(test_advertisement)
-        print("remove_connection")
+        print("Remove Connection")
         
 if __name__ == '__main__':
     main()
-    
-    
